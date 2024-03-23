@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+
+  influxdb:
+    image: influxdb:2
+    container_name: influxdb
+    restart: always
+    environment:
+      - TZ=$TIMEZONE
+      - DOCKER_INFLUXDB_INIT_USERNAME=$INFLUXDB_USERNAME
+      - DOCKER_INFLUXDB_INIT_PASSWORD=$INFLUXDB_PASSWORD
+      - DOCKER_INFLUXDB_INIT_ORG=$INFLUXDB_ORG
+      - DOCKER_INFLUXDB_INIT_BUCKET=$INFLUXDB_BUCKET
+      - DOCKER_INFLUXDB_INIT_RETENTION=$INFLUXDB_RETENTION
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=$INFLUXDB_ADMIN_TOKEN
+      - DOCKER_INFLUXDB_INIT_MODE=$INFLUXDB_INIT_MODE
+    volumes:
+      - influxdb:/var/lib/influxdb
+      - ./config/influxdb:/etc/influxdb2"
+    ports:
+      - "8086:8086"
+
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    restart: always
+    environment:
+      - TZ=$TIMEZONE
+      - INFLUXDB_ORG=$INFLUXDB_ORG
+      - INFLUXDB_BUCKET=$INFLUXDB_BUCKET
+      - INFLUXDB_TOKEN=$INFLUXDB_ADMIN_TOKEN
+    volumes:
+      - ./config/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "6514:6514" # rsyslog
+    depends_on:
+      - influxdb
+
+  kapacitor:
+    image: kapacitor:latest
+    container_name: kapacitor
+    restart: always
+    volumes:
+        - ./config/kapacitor/kapacitor.conf:/etc/kapacitor/kapacitor.conf:ro
+    environment:
+        - KAPACITOR_INFLUXDB_0_URLS_0=http://influxdb:8086
+        - KAPACITOR_INFLUXDB_ENABLED=true
+        - KAPACITOR_INFLUXDB_NAME=influxdb
+        - KAPACITOR_INFLUXDB_0_USERNAME=$INFLUXDB_USERNAME
+        - KAPACITOR_INFLUXDB_0_PASSWORD=$INFLUXDB_ADMIN_TOKEN
+    ports:
+      - "9092:9092"
+    depends_on:
+      - influxdb
+      - telegraf
+
+  chronograf:
+    image: chronograf:latest
+    container_name: chronograf
+    restart: always
+    volumes:
+      - chronograf:/var/lib/chronograf/
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_USERNAME=$INFLUXDB_USERNAME
+      - INFLUXDB_PASSWORD=$INFLUXDB_PASSWORD
+      - KAPACITOR_URL=http://kapacitor:9092
+    ports:
+      - "8888:8888"
+    depends_on:
+      - influxdb
+      - telegraf
+      - kapacitor
+
+volumes:
+  influxdb:
+  chronograf:
+
